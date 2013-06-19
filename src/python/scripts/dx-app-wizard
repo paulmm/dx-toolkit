@@ -294,6 +294,26 @@ with open(os.path.join(template_dir, 'dxapp.json'), 'r') as template_app_json_fi
     for key in template_app_json['runSpec']:
         app_json['runSpec'][key] = template_app_json['runSpec'][key]
 
+##########################
+# APP ACCESS PERMISSIONS #
+##########################
+
+print ''
+print BOLD('Access Permissions')
+
+print fill('''
+Will this app need access to the Internet? (Access to the DNAnexus API is always provided, regardless of this setting.)
+WARNING: ... may display warnings to users ... may be subject to restrictions 
+''')
+print fill('For more information, see ' + BOLD('https://wiki.dnanexus.com/App-Permissions'))
+
+
+with open(os.path.join(template_dir, 'dxapp.json'), 'r') as template_app_json_file:
+    file_text = fill_in_name_and_ver(template_app_json_file.read(), name, version)
+    template_app_json = json.loads(file_text)
+    for key in template_app_json['runSpec']:
+        app_json['runSpec'][key] = template_app_json['runSpec'][key]
+
 #################
 # WRITING FILES #
 #################
