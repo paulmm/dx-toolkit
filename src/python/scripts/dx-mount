@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, stat, errno, argparse
+import os, sys, stat, errno, argparse, json
 import logging
 
 from collections import defaultdict
@@ -108,6 +108,18 @@ class DXInode(object):
                 self.handler = dxpy.get_handler(self.handler.get_id())
             self.handler.seek(offset)
             return self.handler.read(length)
+        elif self.dxid and self.dxid.startswith('gtable'):
+            # TODO: make this less naive
+            if self.handler.state != 'closed':
+                self.handler = dxpy.get_handler(self.handler.get_id())
+            rows = ""
+            for row in self.handler:
+                rows += ("\t".join(map(unicode, row))+"\n").encode('utf-8')
+                if len(rows) >= offset+length:
+                    break
+            return rows[offset:offset+length]
+        elif self.dxid and self.dxid.startswith('record'):
+            return json.dumps(self.handler.get_details(), encoding='utf-8')[offset:offset+length]
         else:
             return self.data[offset:offset+length]
 
@@ -141,6 +153,8 @@ class DXFS(LoggingMixIn, Operations):
 
         print "Populating folders..."
         folders = self.project.describe(input_params={"folders": True})['folders']
+        folders.sort(key=lambda item: (len(item), item))
+        print "Found", len(folders), "folders"
         for path in folders:
             if path == '/':
                 continue
@@ -148,6 +162,16 @@ class DXFS(LoggingMixIn, Operations):
 
         print "Populated", len(folders), "folders"
         print "Populating data objects..."
+        def _get_size(obj):
+            if obj["class"] == "record":
+                # HACK to get records to sort of work for now. We need to know size in advance but the system doesn't report size of records. TODO: FIXME
+                return 1024*64
+            elif obj["class"] == "gtable":
+                # HACK to get gtables to sort of work for now. TODO: Add enough bytes to account for all the tabs and newlines in the tsv output.
+                return obj.get('size', 0) * 2
+            else:
+                return obj.get('size', 0)
+
         for i in dxpy.search.find_data_objects(project=self.project_id, describe=True):
             dataobject = i["describe"]
             dataobject["folder"] = str(dataobject["folder"])
@@ -163,7 +187,7 @@ class DXFS(LoggingMixIn, Operations):
             self.create(path, mode,
                         ctime=dataobject['created']/1000,
                         mtime=dataobject['modified']/1000,
-                        size=dataobject.get('size', 0),
+                        size=_get_size(dataobject),
                         dxid=dataobject['id'])
 
     def chmod(self, path, mode):
@@ -383,6 +407,8 @@ class DXFS(LoggingMixIn, Operations):
             print "closing", node
             node.handler.close(block=True)
             node.handler = dxpy.get_handler(node.handler.get_id())
+            node.size = node.handler.size
+            print "closed", node
         node.xattr[name] = value
 
     def statfs(self, path):

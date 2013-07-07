@@ -89,16 +89,12 @@ class TestDXFS(unittest.TestCase):
     def test_dxfs_write(self):
         filename1 = os.path.join(self.mountpoint, 'foo', 'f1')
         with open(filename1, 'w') as fh:
-            fh.write('0123456789ABCDEF')
+            fh.write('0123456789ABCDEF'*256)
         subprocess.check_call(['dxfs', 'close', filename1, '--wait'])
-#         time.sleep(5)
-#         id = json.loads(subprocess.check_output("dxfs describe "+filename1+" --json", shell=True))['id']
-#         print id
-#         subprocess.call("echo data; dx cat "+id, shell=True)
         with open(filename1) as fh:
             d = fh.read()
             print len(d)
-            self.assertEqual(d, '0123456789ABCDEF', "File readback failed")
+            self.assertEqual(d, '0123456789ABCDEF'*256, "File readback failed")
 
 if __name__ == '__main__':
     unittest.main()
