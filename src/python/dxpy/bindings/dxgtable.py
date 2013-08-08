@@ -644,7 +644,19 @@ class DXGTable(DXDataObject):
         while len(self._http_threadpool_futures) >= self._http_threadpool_size:
             future = dxpy.utils.wait_for_a_future(self._http_threadpool_futures)
             if future.exception() != None:
-                raise future.exception()
+                err = future.exception()
+                print err.name
+                print err.msg
+                print err.details
+                # dxpy.exceptions.DXAPIError: InvalidInput: Part 91 has already been written, code 422
+                # name=dxpy.exceptions.DXAPIError
+                # msg=InvalidInput: Part 91 has already been written
+                # code=422
+                pattern = "InvalidInput: Part \d+ has already been written"
+                if "DXAPIError" in err.name and re.match(pattern, err.msg) and err.code ==422:
+                    sys.stderr.write("Ignoring error of type 'Part XX has already been written'\n")
+                else:
+                    raise future.exception()
             self._http_threadpool_futures.remove(future)
             del future
 
