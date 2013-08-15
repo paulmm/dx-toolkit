@@ -24,7 +24,7 @@ import cStringIO as StringIO
 import concurrent.futures
 from dxpy.bindings import *
 
-DXGTABLE_HTTP_THREADS = 4
+DXGTABLE_HTTP_THREADS = 1
 
 # Number of rows to request at a time when reading.
 #
