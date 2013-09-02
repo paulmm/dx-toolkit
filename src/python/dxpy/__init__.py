@@ -147,7 +147,7 @@ from dxpy.toolkit_version import version as TOOLKIT_VERSION
 
 snappy_available = True
 try:
-    import snappy
+    from .packages import snappy
 except ImportError:
     snappy_available = False
 

@@ -28,7 +28,7 @@ from dxpy.bindings import *
 import dxpy.utils
 
 if dxpy.snappy_available:
-    import snappy
+    from ..packages import snappy
 
 # TODO: adaptive buffer size
 DXFILE_HTTP_THREADS = 8
