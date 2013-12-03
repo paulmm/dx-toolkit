@@ -324,7 +324,7 @@ openssl/libssl.a:
 	[[ $$(shasum openssl-${OPENSSL_PV}.tar.gz|cut -f 1 -d ' ') == $(OPENSSL_SHA) ]]
 	tar -xzf openssl-${OPENSSL_PV}.tar.gz -C openssl --strip-components=1
 ifeq ($(UNAME), Darwin)
-	cd openssl; ./Configure darwin64-x86_64-cc -shared
+	cd openssl; ./Configure darwin64-x86_64-cc -shared --openssldir="$$(pwd)/stage"
 else
 	cd openssl; ./config shared --openssldir="$$(pwd)/stage"
 endif
@@ -363,9 +363,9 @@ CURL_SHA=cadc5648e4cd4ea750a8c580311722ed1fb1573a
 ifeq ($(OS), Windows_NT)
 	CURL_WITH_SSL=--with-winssl
 else ifeq ($(UNAME), Darwin)
-	CURL_WITH_SSL=--with-ssl=../openssl/stage
+	CURL_WITH_SSL=--with-ssl=$$(pwd)/../openssl/stage
 else ifeq ($(CENTOS_MAJOR_VERSION), 5)
-	CURL_WITH_SSL=--with-ssl=../openssl/stage
+	CURL_WITH_SSL=--with-ssl=$$(pwd)/../openssl/stage
 else
 	CURL_WITH_SSL=--with-ssl
 endif
