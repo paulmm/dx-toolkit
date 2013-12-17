@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-export CLASSPATH=${DX_FS_ROOT}/:$CLASSPATH
+export CLASSPATH=/:/lib:/opt/dnanexus/lib/java/*:$CLASSPATH
 
 # Main entry point for this app.
 main() {

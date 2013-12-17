@@ -14,7 +14,6 @@
     "file": "code.sh",
     "interpreter": "bash",
     "execDepends": [
-      {"name": "dx-java-bindings"},
       {"name": "openjdk-6-jre-headless"}
     ]
   },
