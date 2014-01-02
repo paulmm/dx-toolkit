@@ -132,6 +132,15 @@ public final class DXJob extends DXExecution {
         public JobState getState() {
             return describeOutput.state;
         }
+
+        /**
+         * Returns the effective system requirements.
+         *
+         * @return system requirements
+         */
+        public SystemRequirements getSystemRequirements() {
+            return describeOutput.systemRequirements;
+        }
     }
 
     /**
@@ -155,9 +164,10 @@ public final class DXJob extends DXExecution {
         private JobState state;
         @JsonProperty
         private JsonNode details;
-
         @JsonProperty
         private JsonNode output;
+        @JsonProperty
+        private SystemRequirements systemRequirements;
     }
 
     private static final Set<JobState> unsuccessfulJobStates = Sets.immutableEnumSet(

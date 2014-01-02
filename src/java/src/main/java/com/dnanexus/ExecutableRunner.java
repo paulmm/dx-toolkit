@@ -84,8 +84,9 @@ public abstract class ExecutableRunner<T extends DXExecution> {
         @SuppressWarnings("unused")
         @JsonProperty
         private final JsonNode details;
-
-        // TODO: systemRequirements
+        @SuppressWarnings("unused")
+        @JsonProperty
+        private final SystemRequirements systemRequirements;
 
         // TODO: tags
         // TODO: properties
@@ -99,6 +100,7 @@ public abstract class ExecutableRunner<T extends DXExecution> {
             this.folder = runner.folder;
             this.delayWorkspaceDestruction = runner.delayWorkspaceDestruction;
             this.details = runner.details;
+            this.systemRequirements = runner.systemRequirements;
         }
 
     }
@@ -169,6 +171,7 @@ public abstract class ExecutableRunner<T extends DXExecution> {
     private String folder;
     private Boolean delayWorkspaceDestruction;
     private JsonNode details;
+    private SystemRequirements systemRequirements;
 
     private List<DXJob> jobDependencies = Lists.newArrayList();
 
@@ -347,6 +350,23 @@ public abstract class ExecutableRunner<T extends DXExecution> {
                 "withInput or withRawInput cannot be called more than once");
         Preconditions.checkNotNull(inputHash, "input hash may not be null");
         this.input = inputHash;
+        return this;
+    }
+
+    /**
+     * Sets system requirements for the run that will override any defaults specified in the
+     * executable.
+     *
+     * @param systemRequirements system requirements
+     *
+     * @return the same runner object
+     */
+    public ExecutableRunner<T> withSystemRequirements(SystemRequirements systemRequirements) {
+        Preconditions.checkState(this.systemRequirements == null,
+                "withSystemRequirements cannot be called more than once");
+        this.systemRequirements =
+                Preconditions
+                        .checkNotNull(systemRequirements, "systemRequirements may not be null");
         return this;
     }
 }
