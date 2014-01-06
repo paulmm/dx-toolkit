@@ -15,7 +15,7 @@ if platform.python_implementation() != "PyPy":
     except:
         pass
 
-import logging, stat, argparse, json, threading
+import logging, stat, argparse, json
 
 from errno import ENOENT, ENOTDIR
 from time import time
@@ -164,7 +164,7 @@ class DXInode(object):
 
 
 class DXFS(LoggingMixIn, Operations):
-    def __init__(self, project_id, refresh_interval=5):
+    def __init__(self, project_id):
         self.fd = 0
         self.uid = os.getuid()
         self.gid = os.getgid()
@@ -172,7 +172,6 @@ class DXFS(LoggingMixIn, Operations):
         self.root = DXInode(DXInode.DIR, 'root', 0755 | stat.S_IFDIR, self.uid, self.gid)
         self.last_created = 0
         self.project_mtime = 0
-        self.refresh_interval = refresh_interval
 
     def init(self, root_path):
         ''' This method is used both for initializing the filesystem and for reloading it upon modification.
@@ -206,7 +205,6 @@ class DXFS(LoggingMixIn, Operations):
             self._new_dataobject(i["describe"])
 
         debug('Finished init')
-        threading.Timer(self.refresh_interval, self.refresh).start()
 
     def _new_dataobject(self, dataobject, add_missing_folders=False):
         dataobject["folder"] = str(dataobject["folder"])
@@ -232,16 +230,6 @@ class DXFS(LoggingMixIn, Operations):
                     size=_get_size(dataobject),
                     dxid=dataobject['id'])
         self.last_created = max(self.last_created, dataobject['created'])
-
-    def refresh(self):
-        new_mtime = self.project.describe(input_params={"fields": {"modified": True}})['modified']
-
-        if self.project_mtime < new_mtime:
-            debug("Project was modified ({t1} < {t2}), reloading".format(t1=self.project_mtime, t2=new_mtime))
-            self.init(None)
-            self.project_mtime = new_mtime
-
-        threading.Timer(self.refresh_interval, self.refresh).start()
 
     def chmod(self, path, mode):
         debug('chmod path:%s mode:%s' % (path, mode))
