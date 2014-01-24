@@ -20,44 +20,12 @@ Utilities shared by dxpy modules.
 
 from __future__ import print_function
 
-import os, sys, json, collections, concurrent.futures, signal, traceback, time, gc, locale
+import os, json, collections, concurrent.futures, traceback, time, gc
 import dateutil.parser
 from .exec_utils import *
+from .thread_pool import PrioritizingThreadPool
 from .. import logger
 from ..compat import basestring
-
-# Monkeypatch ThreadPoolExecutor with relevant logic from the patch for
-# Python issue 16284. See:
-#
-#   <http://bugs.python.org/issue16284>
-#   <http://hg.python.org/cpython/rev/70cef0a160cf/>
-#
-# We may need to apply the relevant parts of the patches to
-# ProcessPoolExecutor and multiprocessing.Queue if we ever start using
-# those, too.
-def _non_leaky_worker(executor_reference, work_queue):
-    try:
-        while True:
-            try:
-                work_item = work_queue.get(block=True, timeout=0.1)
-            except concurrent.futures.thread.queue.Empty:
-                executor = executor_reference()
-                # Exit if:
-                #   - The interpreter is shutting down OR
-                #   - The executor that owns the worker has been collected OR
-                #   - The executor that owns the worker has been shutdown.
-                if concurrent.futures.thread._shutdown or executor is None or executor._shutdown:
-                    return
-                del executor
-            else:
-                work_item.run()
-                del work_item # <= free this item before the next
-                              #    work_queue.get call runs, rather than
-                              #    after
-    except BaseException:
-        concurrent.futures.thread._base.LOGGER.critical('Exception in worker', exc_info=True)
-
-concurrent.futures.thread._worker = _non_leaky_worker
 
 
 def _force_quit(signum, frame):
@@ -66,10 +34,13 @@ def _force_quit(signum, frame):
     # os.abort()
 
 def get_futures_threadpool(max_workers):
+    #import signal
     #if force_quit_on_sigint:
     #    signal.signal(signal.SIGINT, _force_quit)
-    return concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+    #return concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+    return PrioritizingThreadPool(max_workers=max_workers)
 
+# TODO: this should handle WrappedFutures too
 def wait_for_a_future(futures, print_traceback=False):
     '''
     Return the next future that completes.  If a KeyboardInterrupt is
@@ -91,6 +62,7 @@ def wait_for_a_future(futures, print_traceback=False):
 
     return future
 
+# TODO: this should handle WrappedFutures too
 def wait_for_all_futures(futures, print_traceback=False):
     '''
     Wait indefinitely for all futures in the input iterable to complete.
@@ -117,13 +89,18 @@ def wait_for_all_futures(futures, print_traceback=False):
             print('')
         os._exit(os.EX_IOERR)
 
-def response_iterator(request_iterator, worker_pool, max_active_tasks=4, num_retries=0, retry_after=90):
+def response_iterator(request_iterator, thread_pool, max_active_tasks=4, num_retries=0, retry_after=90, queue_id=None):
     '''
     :param request_iterator: This is expected to be an iterator producing inputs for consumption by the worker pool.
-    :param worker_pool: Assumed to be a concurrent.futures.Executor instance.
+    :type request_iterator: iterator of callable_, args, kwargs
+    :param thread_pool: thread pool to submit the requests to
+    :type thread_pool: PrioritizingThreadPool
     :param max_active_tasks: The maximum number of tasks that may be either running or waiting for consumption of their result.
+    :type max_active_tasks: int
     :param num_retries: The number of times to retry the request.
+    :type num_retries: int
     :param retry_after: The number of seconds to wait before retrying the request.
+    :type retry_after: number
 
     Rate-limited asynchronous multithreaded task runner.
     Consumes tasks from *request_iterator*. Yields their results in order, while allowing up to *max_active_tasks* to run
@@ -141,24 +118,23 @@ def response_iterator(request_iterator, worker_pool, max_active_tasks=4, num_ret
     #    yield _callable(*args, **kwargs)
     #return
 
-    def submit(pool, _callable, args, kwargs, retries=num_retries):
-        # print "Submitting", _callable, args, kwargs
-        future = pool.submit(_callable, *args, **kwargs)
+    def submit(_callable, args, kwargs, retries=num_retries):
+        future = thread_pool.submit_to_queue(queue_id, _callable, *args, **kwargs)
         future.args = (_callable, args, kwargs)
         future.retries = retries
         return future
 
-    def resubmit(pool, future):
+    def resubmit(future):
         _callable, args, kwargs = future.args
         logger.warn("{}: Retrying {} after timeout".format(__name__, _callable))
-        return submit(pool, _callable, args, kwargs, future.retries-1)
+        return submit(_callable, args, kwargs, retries=future.retries-1)
 
     future_deque = collections.deque()
     for i in range(max_active_tasks):
         try:
             _callable, args, kwargs = next(request_iterator)
             # print "Submitting (initial batch):", _callable, args, kwargs
-            f = submit(worker_pool, _callable, args, kwargs)
+            f = submit(_callable, args, kwargs)
             future_deque.append(f)
         except StopIteration:
             break
@@ -173,7 +149,7 @@ def response_iterator(request_iterator, worker_pool, max_active_tasks=4, num_ret
                 # The stale future will continue to run and will reduce the effective size of the pool by 1. If too many
                 # futures are retried, the pool will block until one of the stale futures quits.
                 # f.cancel() doesn't work because there's no way to interrupt a thread.
-                f = resubmit(worker_pool, f)
+                f = resubmit(f)
             future_deque.appendleft(f)
             continue
         except KeyboardInterrupt:
@@ -186,7 +162,7 @@ def response_iterator(request_iterator, worker_pool, max_active_tasks=4, num_ret
 
         try:
             _callable, args, kwargs = next(request_iterator)
-            next_future = submit(worker_pool, _callable, args, kwargs)
+            next_future = submit(_callable, args, kwargs)
             future_deque.append(next_future)
         except StopIteration:
             pass
