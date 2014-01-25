@@ -17,6 +17,7 @@
 import collections
 import concurrent.futures
 import threading
+import time
 
 
 # Monkeypatch ThreadPoolExecutor with relevant logic from the patch for
@@ -109,11 +110,11 @@ class PrioritizingThreadPool(object):
         self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
         self._tasks = threading.Semaphore(max_workers)
         self._queue_lock = threading.Lock()
-        # Counter to help us serve the queues fairly.
-        self._num_tasks_submitted = 0
         # Mapping of queue_id to a NONEMPTY list of WrappedFutures
         # representing items in that queue.
         self._queues = {}
+        # Mapping of queue_id to the time that que was last serviced.
+        self._last_serviced = collections.OrderedDict()
 
     def _submit_one(self, callable_, *args, **kwargs):
         """Starts the next task (which, if successful, will, in turn, start one
@@ -173,17 +174,38 @@ class PrioritizingThreadPool(object):
         #
         # TODO: what is ideal here is probably to serve the tasks in
         # increasing order of prefetch depth
-        queue_id = queue_ids[self._num_tasks_submitted % len(queue_ids)]
-        self._num_tasks_submitted += 1
+
+        # ID of the least recently serviced queue
+        lru_queue = None
+        for candidate_queue_id in queue_ids:
+            last_serviced_time = self._last_serviced.get(candidate_queue_id, 0.0)
+            if lru_queue is None or last_serviced_time < self._last_serviced.get(lru_queue, 0.0):
+                lru_queue = candidate_queue_id
+        queue_id = lru_queue
+        assert queue_id is not None
+
+        # Delete and re-add to keep OrderedDict's keys sorted by last
+        # serviced time
+        if queue_id in self._last_serviced:
+            del self._last_serviced[queue_id]
+        self._last_serviced[queue_id] = time.time()
+        # Clean out our cache if it has too many items.
+        if len(self._last_serviced) > 64:
+            del self._last_serviced[self._last_serviced.iterkeys().next()]
+
         future = self._queues[queue_id].popleft()
         if len(self._queues[queue_id]) == 0:
             del self._queues[queue_id]
         return future
 
     def submit(self, callable_, *args, **kwargs):
-        return self.submit_to_queue(None, callable_, *args, **kwargs)
+        return self.submit_to_queue('', callable_, *args, **kwargs)
 
     def submit_to_queue(self, queue_id, callable_, *args, **kwargs):
+        if queue_id is None:
+            # In _next, None is used as a sentinel value
+            raise AssertionError('queue_id may not be None')
+
         # The task may or may not get picked up by a worker immediately.
         # Create a wrapper for the future so we can return a handle
         # immediately to the caller in either case. When the task is
